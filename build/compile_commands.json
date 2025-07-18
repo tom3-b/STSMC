@@ -1,0 +1,22 @@
+[
+{
+  "directory": "/home/az/Documents/git-STSMC/STSMC/build",
+  "command": "/usr/bin/g++   -I/home/az/Documents/git-STSMC/STSMC/include  -g   -std=gnu++11 -o CMakeFiles/nano_thread.dir/main2.cpp.o -c /home/az/Documents/git-STSMC/STSMC/main2.cpp",
+  "file": "/home/az/Documents/git-STSMC/STSMC/main2.cpp"
+},
+{
+  "directory": "/home/az/Documents/git-STSMC/STSMC/build",
+  "command": "/usr/bin/g++   -I/home/az/Documents/git-STSMC/STSMC/include  -g   -std=gnu++11 -o CMakeFiles/nano_thread.dir/source/Nano.cpp.o -c /home/az/Documents/git-STSMC/STSMC/source/Nano.cpp",
+  "file": "/home/az/Documents/git-STSMC/STSMC/source/Nano.cpp"
+},
+{
+  "directory": "/home/az/Documents/git-STSMC/STSMC/build",
+  "command": "/usr/bin/g++   -I/home/az/Documents/git-STSMC/STSMC/include -I/usr/xenomai/include/cobalt -I/usr/xenomai/include/trank  -g   -I/usr/xenomai/include/cobalt -I/usr/xenomai/include -D_GNU_SOURCE -D_REENTRANT -fasynchronous-unwind-tables -D__COBALT__ -D__COBALT_WRAP__ -o CMakeFiles/xeno_posix.dir/main.cpp.o -c /home/az/Documents/git-STSMC/STSMC/main.cpp",
+  "file": "/home/az/Documents/git-STSMC/STSMC/main.cpp"
+},
+{
+  "directory": "/home/az/Documents/git-STSMC/STSMC/build",
+  "command": "/usr/bin/g++   -I/home/az/Documents/git-STSMC/STSMC/include -I/usr/xenomai/include/cobalt -I/usr/xenomai/include/trank  -g   -I/usr/xenomai/include/cobalt -I/usr/xenomai/include -D_GNU_SOURCE -D_REENTRANT -fasynchronous-unwind-tables -D__COBALT__ -D__COBALT_WRAP__ -o CMakeFiles/xeno_posix.dir/source/Nano.cpp.o -c /home/az/Documents/git-STSMC/STSMC/source/Nano.cpp",
+  "file": "/home/az/Documents/git-STSMC/STSMC/source/Nano.cpp"
+}
+]

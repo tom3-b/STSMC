@@ -1,0 +1,1 @@
+/usr/bin/g++  -g   CMakeFiles/nano_thread.dir/main2.cpp.o CMakeFiles/nano_thread.dir/source/Nano.cpp.o  -o nano_thread  -lpthread 

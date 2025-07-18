@@ -75,13 +75,16 @@ static volatile int run = 1;
 Motor_var voice_mot_var;
 int smc_enable = 0;
 /****************************************自适应控制算法*************************************/
-double alefa = 60;
-double gama = 0.2;
-double bta = 0.0001;
-double md = 10, bd = 1000;
-double d = 0;
+double c = 1.2;
+double sigma = 0;
+double k1=2.5;
+double k2 = 0.1;
+double kx3=0;
+double m=0.2;
+double tem_1=0;
 double f = 0, df = 0, f_prev = 0;
 double u=0;
+int32_t torque=0;
 int cycle_counter = 0;
 int counter = 0;
 double smc_time = 0;
@@ -215,21 +218,10 @@ void SMC_CONTROL()
     fd = fd_force_sfun(smc_time);
     /*fe*/
     fe = shared_buf->f[2]; // fz
-    f = fd - fe;
-    df = (f - f_prev) / 0.001;
-    d = d + bta * (-u + f - d) * 0.001;
-    /* u
-    function y = sfun(d,f,df)
-    alefa=80;
-    gama=0.2;
-    y = -d+1.0*f-alefa*f-gama*df;
-    end
-    */
-    u = -d + 1.0 * f - alefa * f - gama * df;
-    ddx = (u - f - bd * dx) / md;
-    dx = dx + ddx * 0.001;
-    x = x + dx * 0.001;
-    f_prev = f;
+    sigma = c*(fd+fe);
+    tem_1 =tem_1 + k2*sign(sigma)*0.001;
+    u = (tem_1 + k1*pow(abs(sigma),0.5)*sign(sigma))/(kx3*c/m);
+    torque = (int32_t)u/0.57*1000;
     smc_time += 0.001;
 }
 /*****************************************************************************
@@ -514,7 +506,7 @@ void cycle_cmd()
     data_recoder.data[counter][7] = ddx;
     data_recoder.data[counter][8] = fd;
     data_recoder.data[counter][9] = fe;
-    data_recoder.data[counter][10] = d;
+    data_recoder.data[counter][10] = 0;
     counter++;
     /*使能电机*/
     if (voice_mot_var.state == 0x0250)

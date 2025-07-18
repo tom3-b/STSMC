@@ -1,0 +1,4 @@
+/home/az/Documents/git-STSMC/STSMC/build/CMakeFiles/rebuild_cache.dir
+/home/az/Documents/git-STSMC/STSMC/build/CMakeFiles/edit_cache.dir
+/home/az/Documents/git-STSMC/STSMC/build/CMakeFiles/nano_thread.dir
+/home/az/Documents/git-STSMC/STSMC/build/CMakeFiles/xeno_posix.dir
