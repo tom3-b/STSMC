@@ -131,7 +131,7 @@ void *nano_cyclic(void *arg)
         {
             printf("fx fy fz = %f  %f  %f\r\n", to_rt.f[0], to_rt.f[1], to_rt.f[2]);
         }
-        if (cycle_count >= 10 * 1000)
+        if (cycle_count >= 5*1000)
         {
             /* Get the next message from realtime_thread2. */
             ret = read(fd, buf, sizeof(buf));

@@ -48,7 +48,7 @@
 
 #pragma pack(1)
 
-DataMatrix data_recoder;
+DataMatrix *data_recoder;
 /*多线程共享数据结构*/
 
 int s;
@@ -71,20 +71,20 @@ static pthread_t cyclic_thread;
 static pthread_t nano_thread;
 static unsigned int cycle_ns = 1000000; /* 1 ms */
 static volatile int run = 1;
-
+#define cycle_print_s (NSEC_PER_SEC / cycle_ns)
 Motor_var voice_mot_var;
 int smc_enable = 0;
 /****************************************自适应控制算法*************************************/
 double c = 1.2;
 double sigma = 0;
-double k1=2.5;
+double k1 = 0.3;
 double k2 = 0.1;
-double kx3=0;
-double m=0.2;
-double tem_1=0;
+double kx3 = 0.1;
+double m = 0.2;
+double tem_1 = 0;
 double f = 0, df = 0, f_prev = 0;
-double u=0;
-int32_t torque=0;
+double u = 0;
+int16_t torque = 0;
 int cycle_counter = 0;
 int counter = 0;
 double smc_time = 0;
@@ -95,7 +95,6 @@ double fe = 0;
 double x = 0;
 double dx = 0;
 double ddx = 0;
-
 
 /****************************************************************************/
 
@@ -141,10 +140,9 @@ static uint64_t overruns = 0LL;
 pdo_entry elmo_pdo_entry;
 // process data
 const static ec_pdo_entry_reg_t domain1_regs[] = {
-    {Elmo_Pos, Elmo_GOLDEN, 0x60b0, 0x00, &elmo_pdo_entry.position_offset, NULL},
-    {Elmo_Pos, Elmo_GOLDEN, 0x607a, 0x00, &elmo_pdo_entry.tar_position, NULL},
+    {Elmo_Pos, Elmo_GOLDEN, 0x6071, 0x00, &elmo_pdo_entry.tar_torque, NULL},
+    {Elmo_Pos, Elmo_GOLDEN, 0x60B2, 0x00, &elmo_pdo_entry.torque_offset, NULL},
     {Elmo_Pos, Elmo_GOLDEN, 0x6040, 0x00, &elmo_pdo_entry.control_wd, NULL},
-    {Elmo_Pos, Elmo_GOLDEN, 0x6060, 0x00, &elmo_pdo_entry.mode_of_operation_6060, NULL},
     {Elmo_Pos, Elmo_GOLDEN, 0x6064, 0x00, &elmo_pdo_entry.act_position, NULL},
     {Elmo_Pos, Elmo_GOLDEN, 0x606c, 0x00, &elmo_pdo_entry.act_volecty, NULL},
     {Elmo_Pos, Elmo_GOLDEN, 0x6077, 0x00, &elmo_pdo_entry.act_torque, NULL},
@@ -161,22 +159,21 @@ const static ec_pdo_entry_reg_t domain1_regs[] = {
  */
 ec_pdo_entry_info_t slave_1_pdo_entries[] = {
     /* RxPdo 0x1607 */
-    {0x607a, 0x00, 32},
-    {0x6040, 0x00, 16},
-    {0x6060, 0x00, 8},
-    {0x60b0, 0x00, 32},
+    {0x6071, 0x00, 16}, // target torque
+    {0x60b2, 0x00, 16}, // target offset torque
+    {0x6040, 0x00, 16}, // control word
 
     /* TxPDO 0x1a07 */
-    {0x6064, 0x00, 32},
-    {0x606c, 0x00, 32},
-    {0x6077, 0x00, 16},
-    {0x6041, 0x00, 16},
-    {0x6061, 0x00, 8},
+    {0x6064, 0x00, 32}, // position
+    {0x606c, 0x00, 32}, // volecty
+    {0x6077, 0x00, 16}, // torque
+    {0x6041, 0x00, 16}, // status word
+    {0x6061, 0x00, 8}   // operation mode
 };
 
 ec_pdo_info_t slave_1_pdos[] = {
-    {0x1607, 4, slave_1_pdo_entries + 0},
-    {0x1a07, 5, slave_1_pdo_entries + 4},
+    {0x1607, 3, slave_1_pdo_entries + 0},
+    {0x1a07, 5, slave_1_pdo_entries + 3},
 };
 
 ec_sync_info_t slave_1_syncs[] = {
@@ -185,6 +182,7 @@ ec_sync_info_t slave_1_syncs[] = {
     {2, EC_DIR_OUTPUT, 1, slave_1_pdos + 0, EC_WD_DEFAULT},
     {3, EC_DIR_INPUT, 1, slave_1_pdos + 1, EC_WD_DEFAULT},
     {0xFF}};
+
 /*30/(s+0.2008)*ef*/
 // 使用状态空间方法计算系统响应（更高效的实现）
 std::vector<double> calculateResponseStateSpace(const std::vector<double> &ef_t)
@@ -218,10 +216,10 @@ void SMC_CONTROL()
     fd = fd_force_sfun(smc_time);
     /*fe*/
     fe = shared_buf->f[2]; // fz
-    sigma = c*(fd+fe);
-    tem_1 =tem_1 + k2*sign(sigma)*0.001;
-    u = (tem_1 + k1*pow(abs(sigma),0.5)*sign(sigma))/(kx3*c/m);
-    torque = (int32_t)u/0.57*1000;
+    sigma = c * (fd + fe);
+    tem_1 = tem_1 + k2 * sign(sigma) * 0.001;
+    u = (tem_1 + k1 * pow(abs(sigma), 0.5) * sign(sigma)) / (kx3 * c / m);
+    torque = (int16_t)(u / 0.57 * 1000);
     smc_time += 0.001;
 }
 /*****************************************************************************
@@ -494,19 +492,29 @@ void cycle_cmd()
     voice_mot_var.act_volecty = EC_READ_S32(domain1_pd + elmo_pdo_entry.act_volecty);
     voice_mot_var.act_torque = EC_READ_S16(domain1_pd + elmo_pdo_entry.act_torque);
     voice_mot_var.mode_of_operation_6061 = EC_READ_S8(domain1_pd + elmo_pdo_entry.mode_of_operation_6061);
-    voice_mot_var.position_offset = EC_READ_S32(domain1_pd + elmo_pdo_entry.position_offset);
-
-    data_recoder.data[counter][0] = (double)voice_mot_var.act_position;
-    data_recoder.data[counter][1] = (double)voice_mot_var.act_volecty;
-    data_recoder.data[counter][2] = (double)voice_mot_var.act_torque;
-    data_recoder.data[counter][3] = (double)voice_mot_var.state;
-    data_recoder.data[counter][4] = u;
-    data_recoder.data[counter][5] = x;
-    data_recoder.data[counter][6] = dx;
-    data_recoder.data[counter][7] = ddx;
-    data_recoder.data[counter][8] = fd;
-    data_recoder.data[counter][9] = fe;
-    data_recoder.data[counter][10] = 0;
+    data_recoder->data[counter][0] = voice_mot_var.act_position;
+    data_recoder->data[counter][1] = voice_mot_var.act_volecty;
+    data_recoder->data[counter][2] = voice_mot_var.act_torque;
+    data_recoder->data[counter][3] = fd;
+    data_recoder->data[counter][4] = fe;
+    data_recoder->data[counter][5] = sigma;
+    data_recoder->data[counter][6] = u;
+    if ((cycle_counter % cycle_print_s) == 0)
+    {
+        rt_printf("xeno-cst output:\n\r"
+                  "position:%f;\n\r"
+                  "volcety:%f;\n\r"
+                  "torque:%f;\n\r"
+                  "status:0x%x;\n\r"
+                  "fz:%f;\r\n"
+                  "flag:%d;\n\r",
+                  ((double)voice_mot_var.act_position) / 100 / 1000,
+                  ((double)voice_mot_var.act_volecty) / 100 / 1000,
+                  ((double)voice_mot_var.act_torque) / 1000,
+                  x_init,
+                  shared_buf->f[2],
+                  shared_buf->flag);
+    }
     counter++;
     /*使能电机*/
     if (voice_mot_var.state == 0x0250)
@@ -516,12 +524,14 @@ void cycle_cmd()
     if (voice_mot_var.state == 0x0231)
     {
         EC_WRITE_U16(domain1_pd + elmo_pdo_entry.control_wd, 0x07);
+        EC_WRITE_S16(domain1_pd + elmo_pdo_entry.tar_torque, 0);
+        EC_WRITE_S16(domain1_pd + elmo_pdo_entry.torque_offset, 0);
     }
     if (voice_mot_var.state == 0x0233)
     {
-        EC_WRITE_S32(domain1_pd + elmo_pdo_entry.act_position, voice_mot_var.act_position);
-        EC_WRITE_S32(domain1_pd + elmo_pdo_entry.position_offset, 0);
         EC_WRITE_U16(domain1_pd + elmo_pdo_entry.control_wd, 0x010f);
+        EC_WRITE_S16(domain1_pd + elmo_pdo_entry.tar_torque, 0);
+        EC_WRITE_S16(domain1_pd + elmo_pdo_entry.torque_offset, 0);
     }
     if ((voice_mot_var.state & 0x00FF) == 0x0018)
     {
@@ -532,54 +542,22 @@ void cycle_cmd()
     /* Get packets relayed by the regular thread */
     int ret = recvfrom(s, shared_buf, sizeof(shared_buffer_t), MSG_DONTWAIT, NULL, 0);
 
-    if ((cycle_counter % 1000) == 0)
-    {
-        if (ret > 0)
-        {
-            rt_printf(" fz = %f\r\n", shared_buf->f[2]);
-            rt_printf("flag %d", shared_buf->flag);
-        }
-    }
-
-    smc_enable = (shared_buf->flag == 1) && (cycle_counter >= 8000);
-
-    // if ((voice_mot_var.state & 0xFF) == 0x37 && (cycle_counter >= 4000))
-    // {
-
-    //     std::call_once(smc_init_flag, []()
-    //                    {
-    //     x_init = voice_mot_var.act_position;
-    //     smc_time = 0;
-    //     EC_WRITE_U16(domain1_pd + elmo_pdo_entry.control_wd,0x0F); });
-    //     EC_WRITE_S32(domain1_pd + elmo_pdo_entry.tar_position, x_init);
-    //     EC_WRITE_S32(domain1_pd + elmo_pdo_entry.position_offset, 0);
-    // }
-    // if ((voice_mot_var.state & 0xFF) == 0x37 && (cycle_counter >= 6000))
-    // {
-    //     u = 0.2 * sin(f * 2 * M_PI * smc_time);
-    //     u = u * 100000;
-    //     u_p = (int32_t)u;
-    //     EC_WRITE_S32(domain1_pd + elmo_pdo_entry.position_offset, u_p);
-    //     EC_WRITE_S32(domain1_pd + elmo_pdo_entry.tar_position, x_init);
-    //     smc_time += 0.001;
-    // }
+    smc_enable = (shared_buf->flag == 1) && (cycle_counter >= 5 * cycle_print_s);
     if (!smc_enable && ((voice_mot_var.state & 0x00FF) == 0x37)) // enable op and quick stop active
     {
         // 初始化算法时间和当前位置
         // 使能后执行一次
         std::call_once(smc_init_flag, []()
-                       {
-        x_init = voice_mot_var.act_position;
-        smc_time = 0; });
-        EC_WRITE_S32(domain1_pd + elmo_pdo_entry.tar_position, x_init);
-        EC_WRITE_S32(domain1_pd + elmo_pdo_entry.position_offset, 0);
-        EC_WRITE_U16(domain1_pd + elmo_pdo_entry.control_wd, 0x0F);
+                       { smc_time = 0; });
+        EC_WRITE_U16(domain1_pd + elmo_pdo_entry.control_wd, 0x0f);
+        EC_WRITE_S16(domain1_pd + elmo_pdo_entry.tar_torque, 0);
+        EC_WRITE_S16(domain1_pd + elmo_pdo_entry.torque_offset, 0);
     }
     if (smc_enable && ((voice_mot_var.state & 0x00FF) == 0x37))
     {
         SMC_CONTROL();
-        EC_WRITE_S32(domain1_pd + elmo_pdo_entry.position_offset, (int32_t)(x * 1000 * 100000));
-        EC_WRITE_S32(domain1_pd + elmo_pdo_entry.tar_position, x_init);
+        EC_WRITE_S16(domain1_pd + elmo_pdo_entry.tar_torque, torque);
+        EC_WRITE_S16(domain1_pd + elmo_pdo_entry.torque_offset, 0);
     }
 }
 /****************************************************************************/
@@ -676,7 +654,7 @@ void *my_cyclic(void *arg)
         // jitter in the sync_distributed_clocks() call
         update_master_clock();
         // 运行时间测试
-        if (!(cycle_counter % 1000))
+        if (!(cycle_counter % cycle_print_s))
         {
             clock_gettime(CLOCK_MONOTONIC, &time_end);
             time_end_us = wakeup_time - time_end.tv_sec * NSEC_PER_SEC - time_end.tv_nsec + system_time_base;
@@ -724,9 +702,11 @@ int main(int argc, char *argv[])
     memset(shared_buf, 0, sizeof(shared_buffer_t));
 
     /*数据保存结构体初始化*/
-    memset(&data_recoder, 0, sizeof(data_recoder));
-    data_recoder.cols = MAX_COLS;
-    data_recoder.rows = MAX_ROWS;
+    /*保存数据结构体*/
+    data_recoder = new DataMatrix;
+    memset(data_recoder, 0, sizeof(*data_recoder));
+    data_recoder->cols = MAX_COLS;
+    data_recoder->rows = MAX_ROWS;
     int ret;
 
     ec_slave_config_t *sc;
@@ -766,10 +746,20 @@ int main(int argc, char *argv[])
         fprintf(stderr, "PDO entry registration failed!\n");
         return -1;
     }
-    ret = ecrt_slave_config_sdo8(sc, 0x6060, 0, 8); // CSP模式
+    ret = ecrt_slave_config_sdo8(sc, 0x6060, 0, 10); // CST模式
     if (ret < 0)
     {
         rt_printf("CST 模式 set fail\r\n");
+    }
+    ret = ecrt_slave_config_sdo8(sc, 0x60c2, 1, (u_int8_t)250); // interpolation time
+    if (ret < 0)
+    {
+        rt_printf("interpolation time 60c2-1 set fail\r\n");
+    }
+    ret = ecrt_slave_config_sdo8(sc, 0x60c2, 2, (int8_t)-6); // interpolation time
+    if (ret < 0)
+    {
+        rt_printf("interpolation time 60c2-2 set fail\r\n");
     }
     ret = ecrt_slave_config_sdo16(sc, 0x1c32, 1, 2);
     if (ret < 0)
@@ -845,7 +835,7 @@ int main(int argc, char *argv[])
     pthread_join(cyclic_thread, NULL);
     printf("End of Program\n");
     ecrt_release_master(master);
-    saveToFile(&data_recoder);
+    saveToFile(data_recoder);
     return 0;
 }
 

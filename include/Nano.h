@@ -21,8 +21,8 @@ typedef struct
     int flag;
 } shared_buffer_t;
 /*数据保存结构体*/
-#define MAX_COLS 13
-#define MAX_ROWS (1000 * 120)
+#define MAX_COLS 7
+#define MAX_ROWS (2000 * 240)
 typedef struct
 {
     double data[MAX_ROWS][MAX_COLS]; // 假设最大1000行

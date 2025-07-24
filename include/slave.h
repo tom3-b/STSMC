@@ -12,6 +12,7 @@ typedef struct
     unsigned int tar_position;
     unsigned int tar_volecty;
     unsigned int tar_torque;
+    unsigned int torque_offset;
     unsigned int position_offset;
     unsigned int mode_of_operation_6060;
     unsigned int mode_of_operation_6061;
